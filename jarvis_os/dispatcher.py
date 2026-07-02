@@ -72,17 +72,21 @@ TOOLS = [
             "required": ["location"],
         },
     },
-    {
+   {
         "name": "deep_research",
         "description": (
-            "Search the web, read the top sources on a topic, and produce a "
-            "spoken-friendly briefing. Use for open-ended research requests."
+            "Search the web, read the top sources on a topic, and produce a spoken-friendly briefing. "
+            "Use for open-ended research requests. The user's query or area of interest MUST be captured "
+            "entirely inside the 'topic' argument."
         ),
         "risk": "low",
         "input_schema": {
             "type": "object",
             "properties": {
-                "topic": {"type": "string", "description": "Research topic or question"},
+                "topic": {
+                    "type": "string", 
+                    "description": "The exact research topic, question, or search query extracted from the user's input."
+                },
                 "num_sources": {
                     "type": "integer",
                     "description": "How many sources to pull (default 5)",
@@ -124,11 +128,28 @@ def handle_action(action: dict) -> str:
             return get_weather_summary(params["location"]).spoken_summary()
 
         if name == "deep_research":
-            report = deep_research(
-                params["topic"], params.get("num_sources")
-            )
-            return report.spoken_summary()
+            topic = params.get("topic") or next(iter(params.values()), None) if params else None
+            if not topic:
+                return "I couldn't isolate a research topic from that request, Sir."
 
+            num_src = params.get("num_sources")
+            if num_src is not None:
+                try:
+                    # 1. First, check if it's already a digit string like "10"
+                    if isinstance(num_src, str) and num_src.isdigit():
+                        num_src = int(num_src)
+                    # 2. Next, check if it's a word string like "ten"
+                    elif isinstance(num_src, str):
+                        from word2number import w2n
+                        num_src = w2n.word_to_num(num_src)
+                    # 3. Otherwise, force cast it directly
+                    else:
+                        num_src = int(num_src)
+                except (ValueError, TypeError):
+                    num_src = None  # Safe fallback if it's pure garbage
+
+            report = deep_research(str(topic), num_sources=num_src)
+            return report.spoken_summary()
         return f"I don't have a handler for '{name}' yet, Sir."
 
     except Exception as e:

@@ -27,16 +27,21 @@ from orchestrator import route_command
 
 try:
     import pyttsx3
-    _tts_engine = pyttsx3.init()
+    _PYTTSX3_AVAILABLE = True
 except Exception:
-    _tts_engine = None
+    _PYTTSX3_AVAILABLE = False
 
 
 def speak(text: str):
-    print(f"\U0001F50A Jarvis: {text}")
-    if _tts_engine and config.TTS_ENABLED:
-        _tts_engine.say(text)
-        _tts_engine.runAndWait()
+    print(f"🔊 Jarvis: {text}")
+    if not (_PYTTSX3_AVAILABLE and config.TTS_ENABLED):
+        return
+    # Re-init per call: pyttsx3's SAPI5 backend on Windows tends to go
+    # silent after the first runAndWait() in a long-lived process.
+    engine = pyttsx3.init()
+    engine.say(text)
+    engine.runAndWait()
+    engine.stop()
 
 
 class JarvisVoiceSession:

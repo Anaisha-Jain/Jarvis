@@ -58,14 +58,27 @@ def route_command(transcript: str) -> str:
         content = (message.get("content") or "").strip()
         return content or "I'm not sure how to help with that, Sir."
 
+
+
     results = []
     for call in tool_calls:
-        fn = call.get("function", {})
+        # 1. Safely extract the inner function dictionary
+        fn = call.get("function", {}) if isinstance(call, dict) else {}
+        
+        # 2. PRINT IT DIRECTLY (No local variable dependency that can cause a NameError)
+        print(f"\n[DEBUG] Ollama Call: {fn}\n")
+        
+        # 3. Pull args and name safely
         args = fn.get("arguments", {})
+        name = fn.get("name")
+        
         if isinstance(args, str):
             try:
                 args = json.loads(args)
             except json.JSONDecodeError:
                 args = {}
-        results.append(handle_action({"name": fn.get("name"), "input": args}))
+                
+        # 4. Pass it to your dispatcher
+        results.append(handle_action({"name": name, "input": args}))
+        
     return " ".join(results)
