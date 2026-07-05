@@ -1,13 +1,3 @@
-"""
-Jarvis Data Analyst - Deep Research
-
-Pipeline: search -> fetch top N articles -> strip clutter -> summarize
-via local Ollama model (see config.py for OLLAMA_MODEL / OLLAMA_HOST).
-
-Low-risk / auto-execute tier: read-only, produces a text report, touches
-no local files or messaging systems.
-"""
-
 from dataclasses import dataclass, field
 
 import requests
@@ -21,8 +11,7 @@ import config as config
 class Source:
     title: str
     url: str
-    text: str  # cleaned article text (truncated)
-
+    text: str 
 
 @dataclass
 class ResearchReport:
@@ -31,7 +20,6 @@ class ResearchReport:
     sources: list[Source] = field(default_factory=list)
 
     def spoken_summary(self) -> str:
-        # Trim to something reasonable for TTS; full detail stays in .summary
         return self.summary
 
 

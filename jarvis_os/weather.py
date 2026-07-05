@@ -1,10 +1,3 @@
-"""
-Jarvis Data Analyst - Weather
-
-Uses Open-Meteo (open-meteo.com) - free, no API key required, generous
-rate limits for personal use. Low-risk / auto-execute tier.
-"""
-
 from dataclasses import dataclass
 
 import requests
@@ -12,7 +5,6 @@ import requests
 GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
-# WMO weather codes -> plain English
 WEATHER_CODES = {
     0: "clear sky", 1: "mostly clear", 2: "partly cloudy", 3: "overcast",
     45: "fog", 48: "depositing rime fog",

@@ -1,22 +1,3 @@
-"""
-Jarvis Data Analyst - Voice Activation
-
-State machine:
-  IDLE   -> listening only for the wake word (openWakeWord, cheap, always-on)
-  ACTIVE -> listening for spoken commands, transcribing each utterance,
-            routing it to the orchestrator, until a deactivation phrase
-            is heard
-
-Wake word:     "hey jarvis"   (openWakeWord ships a pretrained model for this)
-Deactivation:  any phrase in config.DEACTIVATION_PHRASES - matched against
-               the transcribed text, not a second wake-word model. This
-               keeps things simple: whatever you say while ACTIVE gets
-               transcribed anyway, so checking it for a sleep phrase is free.
-
-First run will download the wake word model and whisper weights - both
-happen automatically, but need internet access once.
-"""
-
 import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
@@ -36,8 +17,7 @@ def speak(text: str):
     print(f"🔊 Jarvis: {text}")
     if not (_PYTTSX3_AVAILABLE and config.TTS_ENABLED):
         return
-    # Re-init per call: pyttsx3's SAPI5 backend on Windows tends to go
-    # silent after the first runAndWait() in a long-lived process.
+
     engine = pyttsx3.init()
     engine.say(text)
     engine.runAndWait()
@@ -63,7 +43,6 @@ class JarvisVoiceSession:
             elif self.state == "ACTIVE":
                 self._handle_active_turn()
 
-    # -- IDLE: cheap always-on wake word spotting ---------------------------
     def _wait_for_wake_word(self):
         with sd.InputStream(
             samplerate=config.SAMPLE_RATE,
@@ -81,11 +60,10 @@ class JarvisVoiceSession:
                     self.state = "ACTIVE"
                     speak("Yes, Sir?")
 
-    # -- ACTIVE: record -> transcribe -> route, until sleep phrase ----------
     def _handle_active_turn(self):
         audio = self._record_until_silence()
         if audio is None or len(audio) < config.SAMPLE_RATE * 0.3:
-            return  # too short / just noise - stay ACTIVE, listen again
+            return  
 
         text = self._transcribe(audio)
         if not text.strip():
@@ -106,12 +84,6 @@ class JarvisVoiceSession:
         return any(phrase in lowered for phrase in config.DEACTIVATION_PHRASES)
 
     def _record_until_silence(self):
-        """
-        Energy-based (RMS) end-of-speech detection: start recording once
-        volume crosses the noise floor, stop after SILENCE_DURATION_S of
-        quiet. Simple and dependency-light; swap for webrtcvad if you need
-        more robustness in noisy environments.
-        """
         sr = config.SAMPLE_RATE
         chunk_ms = 100
         chunk_samples = int(sr * chunk_ms / 1000)
@@ -139,7 +111,6 @@ class JarvisVoiceSession:
                     frames.append(chunk)
                     if silent_streak >= silence_chunks_needed:
                         break
-                # else: still waiting for speech to start - keep looping
 
         if not frames:
             return None

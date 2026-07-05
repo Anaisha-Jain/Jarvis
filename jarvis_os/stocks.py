@@ -1,9 +1,3 @@
-"""
-Jarvis Data Analyst - Stocks
-
-Low-risk / auto-execute tier: read-only market data, nothing destructive.
-"""
-
 from dataclasses import dataclass
 from typing import Optional
 
@@ -38,7 +32,7 @@ def get_stock_summary(ticker: str) -> StockSummary:
     Raises ValueError if the ticker can't be resolved.
     """
     t = yf.Ticker(ticker.upper())
-    info = t.fast_info  # lightweight, avoids full .info scrape when possible
+    info = t.fast_info  
 
     try:
         price = float(info["lastPrice"])
@@ -49,7 +43,6 @@ def get_stock_summary(ticker: str) -> StockSummary:
     change = price - prev_close
     change_pct = (change / prev_close * 100) if prev_close else 0.0
 
-    # fast_info doesn't always have the company name; fall back to .info (slower)
     try:
         long_name = t.info.get("longName") or t.info.get("shortName") or ticker.upper()
     except Exception:
@@ -76,5 +69,5 @@ def get_portfolio_summary(tickers: list[str]) -> list[StockSummary]:
         try:
             results.append(get_stock_summary(tkr))
         except ValueError:
-            continue  # skip bad tickers rather than failing the whole batch
+            continue  
     return results

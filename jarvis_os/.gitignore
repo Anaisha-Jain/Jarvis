@@ -1,0 +1,9 @@
+# Sensitive data
+.env
+token.json
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.venv/
+.env
