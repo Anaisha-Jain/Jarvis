@@ -45,32 +45,48 @@ def route_command(transcript: str) -> str:
                 "You are Jarvis, an advanced AI butler. You have access to local system tools. "
                 "If the user asks to open a website, launch an app, make/delete directories, "
                 "or look up stocks/weather, you MUST call the appropriate function tool immediately. "
-                "Do not just talk about doing it—call the tool."
+                "Do not just talk about doing it—call the tool. "
+                "If the user asks a general knowledge question that has nothing to do with your "
+                "tools (like a fun fact, a definition, or general trivia), just answer it directly "
+                "in plain spoken language—do not call a tool for it."
             )
         },
         {"role": "user", "content": transcript}
     ]
 
-    resp = requests.post(
-        f"{config.OLLAMA_HOST}/api/chat",
-        json={
-            "model": config.OLLAMA_MODEL,
-            "messages": messages,
-            "tools": _ollama_tools(),
-            "stream": False,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    # ... rest of your original orchestrator logic continues below ...
-    message = resp.json().get("message", {})
+    try:
+        resp = requests.post(
+            f"{config.OLLAMA_HOST}/api/chat",
+            json={
+                "model": config.OLLAMA_MODEL,
+                "messages": messages,
+                "tools": _ollama_tools(),
+                "stream": False,
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+    except requests.exceptions.ConnectionError:
+        print("[DEBUG] Could not connect to Ollama -- is it running?")
+        return "I can't reach my language model right now, Sir. Is Ollama running?"
+    except requests.exceptions.Timeout:
+        print("[DEBUG] Ollama request timed out.")
+        return "That took too long to process, Sir."
+    except requests.exceptions.HTTPError as e:
+        print(f"[DEBUG] Ollama returned an error: {e}\nResponse body: {resp.text}")
+        return "My language model ran into an error, Sir."
+
+    raw_json = resp.json()
+    print(f"\n[DEBUG] Full Ollama response: {json.dumps(raw_json, indent=2)}\n")
+
+    message = raw_json.get("message", {})
     tool_calls = message.get("tool_calls") or []
 
     if not tool_calls:
         content = (message.get("content") or "").strip()
+        if not content:
+            print("[DEBUG] Ollama returned no tool call AND no content -- empty response.")
         return content or "I'm not sure how to help with that, Sir."
-
-
 
     results = []
     for call in tool_calls:
@@ -85,8 +101,15 @@ def route_command(transcript: str) -> str:
             try:
                 args = json.loads(args)
             except json.JSONDecodeError:
+                print(f"[DEBUG] Failed to parse tool arguments as JSON: {args}")
                 args = {}
 
-        results.append(handle_action({"name": name, "input": args}))
+        try:
+            result = handle_action({"name": name, "input": args})
+        except Exception as e:
+            print(f"[DEBUG] handle_action raised an exception: {e}")
+            result = f"I ran into a problem running that, Sir: {e}"
+
+        results.append(result)
         
     return " ".join(results)

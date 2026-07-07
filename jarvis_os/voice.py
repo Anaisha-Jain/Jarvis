@@ -5,27 +5,19 @@ from openwakeword.model import Model as WakeWordModel
 
 import config as config
 from orchestrator import route_command
-
-try:
-    import pyttsx3
-    _PYTTSX3_AVAILABLE = True
-except Exception:
-    _PYTTSX3_AVAILABLE = False
-
-
-def speak(text: str):
-    print(f"🔊 Jarvis: {text}")
-    if not (_PYTTSX3_AVAILABLE and config.TTS_ENABLED):
-        return
-
-    engine = pyttsx3.init()
-    engine.say(text)
-    engine.runAndWait()
-    engine.stop()
+from tts_voice import speak as tts_speak
 
 
 class JarvisVoiceSession:
-    def __init__(self):
+    def __init__(self, overlay=None):
+        """
+        overlay: an optional JarvisOverlay instance (see overlay.py). If
+        provided, its .show()/.hide() are called around wake-word detection
+        and Jarvis's spoken response, so the HUD image appears exactly
+        while Jarvis is "on".
+        """
+        self.overlay = overlay
+
         print("Loading wake word model...")
         self.wake_model = WakeWordModel(
             wakeword_models=[config.WAKE_WORD_MODEL],
@@ -35,13 +27,22 @@ class JarvisVoiceSession:
         self.whisper = WhisperModel(config.WHISPER_MODEL_SIZE, device="cpu", compute_type="int8")
         self.state = "IDLE"
 
+    def _speak(self, text: str):
+        # Overlay stays visible for the whole time Jarvis is talking,
+        # then disappears once he's done.
+        tts_speak(
+            text,
+            on_start=self.overlay.show if self.overlay else None,
+            on_end=self.overlay.hide if self.overlay else None,
+        )
+
     def run(self):
-        speak("Standing by.")
+        self._speak("Standing by.")
         while True:
             if self.state == "IDLE":
                 self._wait_for_wake_word()
             elif self.state == "ACTIVE":
-                self._handle_active_turn()
+                self._handle_active_turn(first_turn=True)
 
     def _wait_for_wake_word(self):
         with sd.InputStream(
@@ -58,41 +59,61 @@ class JarvisVoiceSession:
                 if score > config.WAKE_WORD_THRESHOLD:
                     self.wake_model.reset()
                     self.state = "ACTIVE"
-                    speak("Yes, Sir?")
+                    if self.overlay:
+                        self.overlay.show()
+                    self._speak("Yes, Sir?")
 
-    def _handle_active_turn(self):
-        audio = self._record_until_silence()
+    def _handle_active_turn(self, first_turn: bool = False):
+        # After the first turn, give a shorter window to keep talking
+        # before Jarvis assumes the conversation is over and goes back
+        # to sleep -- this is what lets you chain commands without
+        # repeating the wake word every time.
+        wait_s = config.MAX_UTTERANCE_S if first_turn else config.FOLLOWUP_LISTEN_TIMEOUT_S
+
+        audio = self._record_until_silence(max_wait_for_speech_s=wait_s)
         if audio is None or len(audio) < config.SAMPLE_RATE * 0.3:
-            return  
+            # Nobody spoke within the window -- go back to sleep quietly,
+            # no need to announce it.
+            self.state = "IDLE"
+            if self.overlay:
+                self.overlay.hide()
+            return
 
         text = self._transcribe(audio)
         if not text.strip():
+            self.state = "IDLE"
+            if self.overlay:
+                self.overlay.hide()
             return
 
         print(f"\U0001F399\uFE0F  Heard: {text}")
 
         if self._is_deactivation(text):
-            speak("Going back to sleep.")
+            self._speak("Going back to sleep.")
             self.state = "IDLE"
             return
 
         response = route_command(text)
-        speak(response)
+        self._speak(response)
+        # Stay ACTIVE -- run() will call _handle_active_turn again for a
+        # follow-up, no wake word required.
 
     def _is_deactivation(self, text: str) -> bool:
         lowered = text.lower()
         return any(phrase in lowered for phrase in config.DEACTIVATION_PHRASES)
 
-    def _record_until_silence(self):
+    def _record_until_silence(self, max_wait_for_speech_s=None):
         sr = config.SAMPLE_RATE
         chunk_ms = 100
         chunk_samples = int(sr * chunk_ms / 1000)
         silence_chunks_needed = int(config.SILENCE_DURATION_S * 1000 / chunk_ms)
         max_chunks = int(config.MAX_UTTERANCE_S * 1000 / chunk_ms)
+        max_wait_chunks = int((max_wait_for_speech_s or config.MAX_UTTERANCE_S) * 1000 / chunk_ms)
 
         frames = []
         silent_streak = 0
         speech_started = False
+        waited_chunks = 0
 
         with sd.InputStream(
             samplerate=sr, channels=1, dtype="int16", blocksize=chunk_samples
@@ -111,6 +132,10 @@ class JarvisVoiceSession:
                     frames.append(chunk)
                     if silent_streak >= silence_chunks_needed:
                         break
+                else:
+                    waited_chunks += 1
+                    if waited_chunks >= max_wait_chunks:
+                        break  # gave up waiting for speech to start
 
         if not frames:
             return None
@@ -123,5 +148,7 @@ class JarvisVoiceSession:
 
 
 if __name__ == "__main__":
+    # Standalone run (no overlay, no tray icon) -- mainly for quick testing.
+    # Use jarvis_app.py for the full background-app experience.
     session = JarvisVoiceSession()
     session.run()

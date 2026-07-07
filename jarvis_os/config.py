@@ -14,6 +14,7 @@ MAX_CHARS_PER_SOURCE = 6000
 SAMPLE_RATE = 16000
 
 WAKE_WORD_MODEL = "hey_jarvis"
+FOLLOWUP_LISTEN_TIMEOUT_S = 8   # how long Jarvis keeps listening for a follow-up before going back to sleep
 WAKE_WORD_THRESHOLD = 0.5          
 WAKE_WORD_CHUNK = 1280             
 SILENCE_RMS_THRESHOLD = 500        
