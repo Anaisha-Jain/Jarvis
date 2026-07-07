@@ -4,7 +4,7 @@ from faster_whisper import WhisperModel
 from openwakeword.model import Model as WakeWordModel
 
 import config as config
-from orchestrator import route_command
+from orchestrator import route_command, clean_spoken_text
 from tts_voice import speak as tts_speak
 
 
@@ -29,11 +29,12 @@ class JarvisVoiceSession:
 
     def _speak(self, text: str):
         # Overlay stays visible for the whole time Jarvis is talking,
-        # then disappears once he's done.
+        # then disappears once he's done. Pass the model for interruptions.
         tts_speak(
             text,
             on_start=self.overlay.show if self.overlay else None,
             on_end=self.overlay.hide if self.overlay else None,
+            interrupter_model=self.wake_model  
         )
 
     def run(self):
@@ -65,21 +66,18 @@ class JarvisVoiceSession:
 
     def _handle_active_turn(self, first_turn: bool = False):
         # After the first turn, give a shorter window to keep talking
-        # before Jarvis assumes the conversation is over and goes back
-        # to sleep -- this is what lets you chain commands without
-        # repeating the wake word every time.
         wait_s = config.MAX_UTTERANCE_S if first_turn else config.FOLLOWUP_LISTEN_TIMEOUT_S
 
         audio = self._record_until_silence(max_wait_for_speech_s=wait_s)
         if audio is None or len(audio) < config.SAMPLE_RATE * 0.3:
-            # Nobody spoke within the window -- go back to sleep quietly,
-            # no need to announce it.
             self.state = "IDLE"
             if self.overlay:
                 self.overlay.hide()
             return
 
         text = self._transcribe(audio)
+        text = clean_spoken_text(text)  # Cleans up "at the rate" for emails
+        
         if not text.strip():
             self.state = "IDLE"
             if self.overlay:
@@ -95,8 +93,6 @@ class JarvisVoiceSession:
 
         response = route_command(text)
         self._speak(response)
-        # Stay ACTIVE -- run() will call _handle_active_turn again for a
-        # follow-up, no wake word required.
 
     def _is_deactivation(self, text: str) -> bool:
         lowered = text.lower()
@@ -148,7 +144,5 @@ class JarvisVoiceSession:
 
 
 if __name__ == "__main__":
-    # Standalone run (no overlay, no tray icon) -- mainly for quick testing.
-    # Use jarvis_app.py for the full background-app experience.
     session = JarvisVoiceSession()
     session.run()

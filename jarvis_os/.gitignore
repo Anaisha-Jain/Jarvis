@@ -7,3 +7,7 @@ __pycache__/
 *.py[cod]
 .venv/
 .env
+
+# Google API Credentials
+credentials.json
+token.json

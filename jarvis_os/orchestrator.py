@@ -1,11 +1,8 @@
 import json
-
 import requests
-
 import config as config
 from dispatcher import TOOLS, handle_action
-
-
+from datetime import datetime
 import re
 
 def clean_spoken_text(text: str) -> str:
@@ -31,6 +28,40 @@ def _ollama_tools():
         for tool in TOOLS
     ]
 
+
+from datetime import datetime, timedelta
+
+def route_command(transcript: str) -> str:
+    """Main entry point: transcript in, spoken response out."""
+    if not transcript.strip():
+        return "I didn't catch that, Sir."
+
+    # Calculate exact dates in the strict DD-Mon-YYYY format IMAP requires
+    today = datetime.now()
+    yesterday = today - timedelta(days=1)
+    
+    current_date = today.strftime("%d-%b-%Y")
+    yesterday_date = yesterday.strftime("%d-%b-%Y")
+
+    # Highlight system tools explicitly to the model, now with a precise calendar
+    messages = [
+        {
+            "role": "system", 
+            "content": (
+                f"You are Jarvis, an advanced AI butler. "
+                f"Today's date is {current_date}. Yesterday was {yesterday_date}. "
+                "The current location is Toronto, Ontario, Canada. "
+                "You have access to local system tools. "
+                "If the user asks to open a website, launch an app, make/delete directories, "
+                "look up stocks/weather, or check emails, you MUST call the appropriate function tool immediately. "
+                "Do not just talk about doing it—call the tool. "
+                "If the user asks a general knowledge question that has nothing to do with your "
+                "tools (like a fun fact, a definition, or general trivia), just answer it directly "
+                "in plain spoken language—do not call a tool for it."
+            )
+        },
+        {"role": "user", "content": transcript}
+    ]
 
 def route_command(transcript: str) -> str:
     """Main entry point: transcript in, spoken response out."""
